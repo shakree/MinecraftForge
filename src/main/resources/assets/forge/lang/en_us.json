@@ -6,6 +6,7 @@
   "fml.menu.mods.a_to_z": "A-Z",
   "fml.menu.mods.z_to_a": "Z-A",
   "fml.menu.mods.config": "Config",
+  "fml.menu.mods.openmodsfolder": "Open mods folder",
   "fml.menu.modoptions": "Mod Options...",
   "fml.menu.mods.info.version":"Version: {0}",
   "fml.menu.mods.info.idstate":"ModID: {0} State:{1,lower}",
@@ -52,7 +53,7 @@
   "fml.modloading.brokenfile.oldforge": "File {2} is for an older version of Forge and cannot be loaded",
   "fml.modloading.brokenfile.liteloader": "File {2} is a LiteLoader mod and cannot be loaded",
   "fml.modloading.brokenfile.fabric": "File {2} is a Fabric mod and cannot be loaded",
-  "fml.modloading.brokenfile.optifine": "File {2} is OptiFine, which is unsupported",
+  "fml.modloading.brokenfile.optifine": "File {2} is an incompatible version of OptiFine",
   "fml.modloading.brokenfile.invalidzip": "File {2} is not a jar file",
   "fml.modloading.brokenresources": "File {2} failed to load a valid ResourcePackInfo",
 
@@ -98,6 +99,8 @@
   "commands.forge.tracking.timing_entry": "{0} - {1} [{2}, {3}, {4}]: {5}",
   "commands.forge.tracking.no_data": "No data has been recorded yet.",
 
+  "commands.config.getwithtype": "Config for %s of type %s found at %s",
+  "commands.config.noconfig": "Config for %s of type %s not found",
 
   "forge.update.beta.1": "%sWARNING: %sForge Beta",
   "forge.update.beta.2": "Major issues may arise, verify before reporting.",
@@ -134,6 +137,8 @@
   "forge.configgui.forgeLightPipelineEnabled": "Forge Light Pipeline Enabled",
   "forge.configgui.selectiveResourceReloadEnabled.tooltip": "When enabled, makes specific reload tasks such as language changing quicker to run.",
   "forge.configgui.selectiveResourceReloadEnabled": "Enable Selective Resource Loading",
+  "forge.configgui.treatEmptyTagsAsAir.tooltip": "Vanilla will treat crafting recipess using empty tags as air, and allow you to craft with nothing in that slot. If false, this changes empty tags to use BARRIER as the item. To prevent crafting with air.",
+  "forge.configgui.treatEmptyTagsAsAir": "Treat empty tags as air",
 
   "forge.controlsgui.shift": "SHIFT + %s",
   "forge.controlsgui.control": "CTRL + %s",

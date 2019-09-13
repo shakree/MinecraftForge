@@ -29,6 +29,7 @@ import javax.annotation.Nullable;
 import net.minecraft.block.Block;
 import net.minecraft.block.BedBlock;
 import net.minecraft.block.FarmlandBlock;
+import net.minecraft.block.FenceGateBlock;
 import net.minecraft.block.FireBlock;
 import net.minecraft.block.HorizontalBlock;
 import net.minecraft.block.IBeaconBeamColorProvider;
@@ -365,7 +366,7 @@ public interface IForgeBlock
      */
     default boolean canBeReplacedByLeaves(BlockState state, IWorldReader world, BlockPos pos)
     {
-        return (isAir(state, world, pos) || state.isIn(BlockTags.LEAVES)) || !state.isOpaqueCube(world, pos);
+        return isAir(state, world, pos) || state.isIn(BlockTags.LEAVES);
     }
 
     /**
@@ -1023,5 +1024,14 @@ public interface IForgeBlock
     {
         world.setBlockState(pos, Blocks.AIR.getDefaultState(), 3);
         getBlock().onExplosionDestroy(world, pos, explosion);
+    }
+
+    /**
+     * Determines if this block's collision box should be treated as though it can extend above its block space.
+     * Use this to replicate fence and wall behavior.
+     */
+    default boolean collisionExtendsVertically(BlockState state, IBlockReader world, BlockPos pos, Entity collidingEntity)
+    {
+        return getBlock().isIn(BlockTags.FENCES) || getBlock().isIn(BlockTags.WALLS) || getBlock() instanceof FenceGateBlock;
     }
 }

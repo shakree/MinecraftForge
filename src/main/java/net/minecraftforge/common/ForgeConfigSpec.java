@@ -38,6 +38,7 @@ import java.util.Objects;
 import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
+import java.util.stream.Collectors;
 
 import javax.annotation.Nonnull;
 
@@ -50,6 +51,7 @@ import com.electronwill.nightconfig.core.EnumGetMethod;
 import com.electronwill.nightconfig.core.ConfigSpec.CorrectionAction;
 import com.electronwill.nightconfig.core.ConfigSpec.CorrectionListener;
 import com.electronwill.nightconfig.core.InMemoryFormat;
+import com.electronwill.nightconfig.core.UnmodifiableConfig;
 import com.electronwill.nightconfig.core.file.FileConfig;
 import com.electronwill.nightconfig.core.utils.UnmodifiableConfigWrapper;
 import com.google.common.base.Joiner;
@@ -62,15 +64,18 @@ import com.google.common.collect.ObjectArrays;
  * Like {@link com.electronwill.nightconfig.core.ConfigSpec} except in builder format, and extended to accept comments, language keys,
  * and other things Forge configs would find useful.
  */
-
-public class ForgeConfigSpec extends UnmodifiableConfigWrapper<Config>
+public class ForgeConfigSpec extends UnmodifiableConfigWrapper<UnmodifiableConfig> //TODO: Remove extends and pipe everything through getSpec/getValues?
 {
     private Map<List<String>, String> levelComments = new HashMap<>();
 
+    private UnmodifiableConfig values;
     private Config childConfig;
 
-    private ForgeConfigSpec(Config storage, Map<List<String>, String> levelComments) {
+    private boolean isCorrecting = false;
+
+    private ForgeConfigSpec(UnmodifiableConfig storage, UnmodifiableConfig values, Map<List<String>, String> levelComments) {
         super(storage);
+        this.values = values;
         this.levelComments = levelComments;
     }
 
@@ -87,6 +92,22 @@ public class ForgeConfigSpec extends UnmodifiableConfigWrapper<Config>
         }
     }
 
+    public boolean isCorrecting() {
+        return isCorrecting;
+    }
+
+    public boolean isLoaded() {
+        return childConfig != null;
+    }
+
+    public UnmodifiableConfig getSpec() {
+        return this.config;
+    }
+
+    public UnmodifiableConfig getValues() {
+        return this.values;
+    }
+
     public void save()
     {
         Preconditions.checkNotNull(childConfig, "Cannot save config value without assigned Config object present");
@@ -95,21 +116,28 @@ public class ForgeConfigSpec extends UnmodifiableConfigWrapper<Config>
         }
     }
 
-    public boolean isCorrect(CommentedConfig config) {
+    public synchronized boolean isCorrect(CommentedConfig config) {
         LinkedList<String> parentPath = new LinkedList<>();
-        return correct(this.config, config, parentPath, Collections.unmodifiableList( parentPath ), null, true) == 0;
+        return correct(this.config, config, parentPath, Collections.unmodifiableList( parentPath ), (a, b, c, d) -> {}, true) == 0;
     }
 
     public int correct(CommentedConfig config) {
         return correct(config, (action, path, incorrectValue, correctedValue) -> {});
     }
 
-    public int correct(CommentedConfig config, CorrectionListener listener) {
+    public synchronized int correct(CommentedConfig config, CorrectionListener listener) {
         LinkedList<String> parentPath = new LinkedList<>(); //Linked list for fast add/removes
-        return correct(this.config, config, parentPath, Collections.unmodifiableList(parentPath), listener, false);
+        int ret = -1;
+        try {
+            isCorrecting = true;
+            ret = correct(this.config, config, parentPath, Collections.unmodifiableList(parentPath), listener, false);
+        } finally {
+            isCorrecting = false;
+        }
+        return ret;
     }
 
-    private int correct(Config spec, CommentedConfig config, LinkedList<String> parentPath, List<String> parentPathUnmodifiable, CorrectionListener listener, boolean dryRun)
+    private int correct(UnmodifiableConfig spec, CommentedConfig config, LinkedList<String> parentPath, List<String> parentPathUnmodifiable, CorrectionListener listener, boolean dryRun)
     {
         int count = 0;
 
@@ -375,6 +403,8 @@ public class ForgeConfigSpec extends UnmodifiableConfigWrapper<Config>
         }
         public <V extends Enum<V>> EnumValue<V> defineEnum(List<String> path, Supplier<V> defaultSupplier, EnumGetMethod converter, Predicate<Object> validator, Class<V> clazz) {
             context.setClazz(clazz);
+            V[] allowedValues = clazz.getEnumConstants();
+            context.setComment(ObjectArrays.concat(context.getComment(), "Allowed Values: " + Arrays.stream(allowedValues).map(Enum::name).collect(Collectors.joining(", "))));
             return new EnumValue<V>(this, define(path, new ValueSpec(defaultSupplier, validator, context), defaultSupplier).getPath(), defaultSupplier, converter, clazz);
         }
 
@@ -495,7 +525,10 @@ public class ForgeConfigSpec extends UnmodifiableConfigWrapper<Config>
         public ForgeConfigSpec build()
         {
             context.ensureEmpty();
-            ForgeConfigSpec ret = new ForgeConfigSpec(storage, levelComments);
+            Config valueCfg = Config.of(InMemoryFormat.withSupport(ConfigValue.class::isAssignableFrom));
+            values.forEach(v -> valueCfg.set(v.getPath(), v));
+
+            ForgeConfigSpec ret = new ForgeConfigSpec(storage, valueCfg, levelComments);
             values.forEach(v -> v.spec = ret);
             return ret;
         }
@@ -679,7 +712,8 @@ public class ForgeConfigSpec extends UnmodifiableConfigWrapper<Config>
         public T get()
         {
             Preconditions.checkNotNull(spec, "Cannot get config value before spec is built");
-            Preconditions.checkNotNull(spec.childConfig, "Cannot get config value without assigned Config object present");
+            if (spec.childConfig == null)
+                return defaultSupplier.get();
             return getRaw(spec.childConfig, path, defaultSupplier);
         }
 

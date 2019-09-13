@@ -126,6 +126,7 @@ import net.minecraftforge.event.world.BlockEvent.NeighborNotifyEvent;
 import net.minecraftforge.event.world.ChunkWatchEvent;
 import net.minecraftforge.event.world.ExplosionEvent;
 import net.minecraftforge.event.world.GetCollisionBoxesEvent;
+import net.minecraftforge.event.world.PistonEvent;
 import net.minecraftforge.event.world.SaplingGrowTreeEvent;
 import net.minecraftforge.event.world.WorldEvent;
 import net.minecraftforge.eventbus.api.Event;
@@ -174,27 +175,27 @@ public class ForgeEventFactory
         MinecraftForge.EVENT_BUS.post(new PlayerDestroyItemEvent(player, stack, hand));
     }
 
-    public static Result canEntitySpawn(MobEntity entity, IWorld world, double x, double y, double z, AbstractSpawner spawner)
+    public static Result canEntitySpawn(MobEntity entity, IWorld world, double x, double y, double z, AbstractSpawner spawner, SpawnReason spawnReason)
     {
         if (entity == null)
             return Result.DEFAULT;
-        LivingSpawnEvent.CheckSpawn event = new LivingSpawnEvent.CheckSpawn(entity, world, x, y, z, spawner);
+        LivingSpawnEvent.CheckSpawn event = new LivingSpawnEvent.CheckSpawn(entity, world, x, y, z, spawner, spawnReason);
         MinecraftForge.EVENT_BUS.post(event);
         return event.getResult();
     }
 
     public static boolean canEntitySpawnSpawner(MobEntity entity, World world, float x, float y, float z, AbstractSpawner spawner)
     {
-        Result result = canEntitySpawn(entity, world, x, y, z, spawner);
+        Result result = canEntitySpawn(entity, world, x, y, z, spawner, SpawnReason.SPAWNER);
         if (result == Result.DEFAULT)
             return entity.canSpawn(world, SpawnReason.SPAWNER) || !entity.isNotColliding(world); // vanilla logic
         else
             return result == Result.ALLOW;
     }
 
-    public static boolean doSpecialSpawn(MobEntity entity, World world, float x, float y, float z, AbstractSpawner spawner)
+    public static boolean doSpecialSpawn(MobEntity entity, World world, float x, float y, float z, AbstractSpawner spawner, SpawnReason spawnReason)
     {
-        return MinecraftForge.EVENT_BUS.post(new LivingSpawnEvent.SpecialSpawn(entity, world, x, y, z, spawner));
+        return MinecraftForge.EVENT_BUS.post(new LivingSpawnEvent.SpecialSpawn(entity, world, x, y, z, spawner, spawnReason));
     }
 
     public static Result canEntityDespawn(MobEntity entity)
@@ -251,7 +252,7 @@ public class ForgeEventFactory
         return event.getDropChance();
     }
 
-    public static BlockState fireFluidPlaceBlockEvent(World world, BlockPos pos, BlockPos liquidPos, BlockState state)
+    public static BlockState fireFluidPlaceBlockEvent(IWorld world, BlockPos pos, BlockPos liquidPos, BlockState state)
     {
         BlockEvent.FluidPlaceBlockEvent event = new BlockEvent.FluidPlaceBlockEvent(world, pos, liquidPos, state);
         MinecraftForge.EVENT_BUS.post(event);
@@ -687,5 +688,15 @@ public class ForgeEventFactory
             MinecraftForge.EVENT_BUS.post(new ChunkWatchEvent.Watch(entity, chunkpos, world));
         else
             MinecraftForge.EVENT_BUS.post(new ChunkWatchEvent.UnWatch(entity, chunkpos, world));
+    }
+
+    public static boolean onPistonMovePre(World world, BlockPos pos, Direction direction, boolean extending)
+    {
+        return MinecraftForge.EVENT_BUS.post(new PistonEvent.Pre(world, pos, direction, extending ? PistonEvent.PistonMoveType.EXTEND : PistonEvent.PistonMoveType.RETRACT));
+    }
+
+    public static boolean onPistonMovePost(World world, BlockPos pos, Direction direction, boolean extending)
+    {
+        return MinecraftForge.EVENT_BUS.post(new PistonEvent.Post(world, pos, direction, extending ? PistonEvent.PistonMoveType.EXTEND : PistonEvent.PistonMoveType.RETRACT));
     }
 }

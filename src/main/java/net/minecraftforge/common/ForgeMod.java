@@ -20,15 +20,15 @@
 package net.minecraftforge.common;
 
 import net.minecraftforge.eventbus.api.IEventBus;
+import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.*;
 import net.minecraftforge.fml.config.ModConfig;
 import net.minecraftforge.fml.event.lifecycle.FMLCommonSetupEvent;
-import net.minecraftforge.fml.event.lifecycle.FMLLoadCompleteEvent;
 import net.minecraftforge.fml.event.lifecycle.FMLModIdMappingEvent;
-import net.minecraftforge.fml.event.lifecycle.InterModProcessEvent;
 import net.minecraftforge.fml.event.server.FMLServerStartingEvent;
 import net.minecraftforge.fml.event.server.FMLServerStoppingEvent;
 import net.minecraftforge.fml.javafmlmod.FMLJavaModLoadingContext;
+import net.minecraftforge.server.command.ConfigCommand;
 import net.minecraftforge.server.command.ForgeCommand;
 import net.minecraftforge.versions.forge.ForgeVersion;
 import net.minecraftforge.versions.mcp.MCPVersion;
@@ -38,20 +38,35 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import net.minecraft.data.DataGenerator;
+import net.minecraft.item.crafting.IRecipe;
+import net.minecraft.item.crafting.IRecipeSerializer;
 import net.minecraft.nbt.CompoundNBT;
+import net.minecraft.util.ResourceLocation;
 import net.minecraft.world.storage.SaveHandler;
 import net.minecraft.world.storage.WorldInfo;
+import net.minecraftforge.common.crafting.CompoundIngredient;
+import net.minecraftforge.common.crafting.ConditionalRecipe;
+import net.minecraftforge.common.crafting.CraftingHelper;
+import net.minecraftforge.common.crafting.IngredientNBT;
+import net.minecraftforge.common.crafting.VanillaIngredientSerializer;
+import net.minecraftforge.common.crafting.conditions.AndCondition;
+import net.minecraftforge.common.crafting.conditions.FalseCondition;
+import net.minecraftforge.common.crafting.conditions.ItemExistsCondition;
+import net.minecraftforge.common.crafting.conditions.ModLoadedCondition;
+import net.minecraftforge.common.crafting.conditions.NotCondition;
+import net.minecraftforge.common.crafting.conditions.OrCondition;
+import net.minecraftforge.common.crafting.conditions.TagEmptyCondition;
+import net.minecraftforge.common.crafting.conditions.TrueCondition;
 import net.minecraftforge.common.data.ForgeBlockTagsProvider;
 import net.minecraftforge.common.data.ForgeItemTagsProvider;
 import net.minecraftforge.common.data.ForgeRecipeProvider;
 import net.minecraftforge.common.model.animation.CapabilityAnimation;
 import net.minecraftforge.energy.CapabilityEnergy;
+import net.minecraftforge.event.RegistryEvent;
 import net.minecraftforge.fml.event.lifecycle.GatherDataEvent;
 import net.minecraftforge.fluids.capability.CapabilityFluidHandler;
 import net.minecraftforge.items.CapabilityItemHandler;
-import net.minecraftforge.fluids.UniversalBucket;
 import net.minecraftforge.fml.common.Mod;
-import net.minecraftforge.fml.common.gameevent.PlayerEvent;
 import org.apache.logging.log4j.Marker;
 import org.apache.logging.log4j.MarkerManager;
 
@@ -77,8 +92,6 @@ public class ForgeMod implements WorldPersistenceHooks.WorldPersistenceHook
         return INSTANCE;
     }
 
-    public UniversalBucket universalBucket;
-
     public ForgeMod()
     {
         LOGGER.info(FORGEMOD,"Forge mod loading, version {}, for MC {} with MCP {}", ForgeVersion.getVersion(), MCPVersion.getMCVersion(), MCPVersion.getMCPVersion());
@@ -88,11 +101,9 @@ public class ForgeMod implements WorldPersistenceHooks.WorldPersistenceHook
         WorldPersistenceHooks.addHook(new FMLWorldPersistenceHook());
         final IEventBus modEventBus = FMLJavaModLoadingContext.get().getModEventBus();
         modEventBus.addListener(this::preInit);
-        modEventBus.addListener(this::postInit);
-        modEventBus.addListener(this::onAvailable);
         modEventBus.addListener(this::gatherData);
+        modEventBus.register(this);
         MinecraftForge.EVENT_BUS.addListener(this::serverStarting);
-        MinecraftForge.EVENT_BUS.addListener(this::playerLogin);
         MinecraftForge.EVENT_BUS.addListener(this::serverStopping);
         ModLoadingContext.get().registerConfig(ModConfig.Type.CLIENT, ForgeConfig.clientSpec);
         ModLoadingContext.get().registerConfig(ModConfig.Type.SERVER, ForgeConfig.serverSpec);
@@ -102,32 +113,13 @@ public class ForgeMod implements WorldPersistenceHooks.WorldPersistenceHook
         StartupMessageManager.addModMessage("Forge version "+ForgeVersion.getVersion());
     }
 
-/*
-    public void missingMapping(RegistryEvent.MissingMappings<Item> event)
-    {
-        for (MissingMappings.Mapping<Item> entry : event.getAllMappings())
-        {
-            if (entry.key.toString().equals("minecraft:totem")) //This item changed from 1.11 -> 1.11.2
-            {
-                ResourceLocation newTotem = new ResourceLocation("minecraft:totem_of_undying");
-                entry.remap(ForgeRegistries.ITEMS.getValue(newTotem));
-            }
-        }
-    }
-*/
-
-    public void playerLogin(PlayerEvent.PlayerLoggedInEvent event)
-    {
-        UsernameCache.setUsername(event.getPlayer().getUniqueID(), event.getPlayer().getGameProfile().getName());
-    }
-
-
     public void preInit(FMLCommonSetupEvent evt)
     {
         CapabilityItemHandler.register();
         CapabilityFluidHandler.register();
         CapabilityAnimation.register();
         CapabilityEnergy.register();
+        MinecraftForge.EVENT_BUS.addListener(VillagerTradingManager::loadTrades);
         MinecraftForge.EVENT_BUS.register(MinecraftForge.INTERNAL_HANDLER);
         MinecraftForge.EVENT_BUS.register(this);
 
@@ -135,52 +127,20 @@ public class ForgeMod implements WorldPersistenceHooks.WorldPersistenceHook
         {
             VersionChecker.startVersionCheck();
         }
-    }
 
-/*
-    public void registrItems(RegistryEvent.Register<Item> event)
-    {
-        // Add and register the forge universal bucket, if it's enabled
-        if(FluidRegistry.isUniversalBucketEnabled())
-        {
-            universalBucket = new UniversalBucket();
-            universalBucket.setUnlocalizedName("forge.bucketFilled");
-            event.getRegistry().register(universalBucket.setRegistryName(ForgeVersion.MOD_ID, "bucket_filled"));
-            MinecraftForge.EVENT_BUS.register(universalBucket);
-        }
-    }
-*/
-
-    public void postInit(InterModProcessEvent evt)
-    {
-        registerAllBiomesAndGenerateEvents();
-        //ForgeChunkManager.loadConfiguration();
-    }
-
-    private static void registerAllBiomesAndGenerateEvents()
-    {
-/*
-        for (Biome biome : ForgeRegistries.BIOMES.getValuesCollection())
-        {
-            if (biome.decorator instanceof DeferredBiomeDecorator)
-            {
-                DeferredBiomeDecorator decorator = (DeferredBiomeDecorator)biome.decorator;
-                decorator.fireCreateEventAndReplace(biome);
-            }
-
-            BiomeDictionary.ensureHasTypes(biome);
-        }
-*/
-    }
-
-    public void onAvailable(FMLLoadCompleteEvent evt)
-    {
-//        FluidRegistry.validateFluidRegistry();
+        /*
+         * We can't actually add any of these, because vanilla clients will choke on unknown argument types
+         * So our custom arguments will not validate client-side, but they do still work
+        ArgumentTypes.register("forge:enum", EnumArgument.class, new EnumArgument.Serializer());
+        ArgumentTypes.register("forge:modid", ModIdArgument.class, new ArgumentSerializer<>(ModIdArgument::modIdArgument));
+        ArgumentTypes.register("forge:structure_type", StructureArgument.class, new ArgumentSerializer<>(StructureArgument::structure));
+        */
     }
 
     public void serverStarting(FMLServerStartingEvent evt)
     {
         new ForgeCommand(evt.getCommandDispatcher());
+        ConfigCommand.register(evt.getCommandDispatcher());
     }
 
     public void serverStopping(FMLServerStoppingEvent evt)
@@ -196,7 +156,6 @@ public class ForgeMod implements WorldPersistenceHooks.WorldPersistenceHook
         DimensionManager.writeRegistry(dims);
         if (!dims.isEmpty())
             forgeData.put("dims", dims);
-        // TODO fluids FluidRegistry.writeDefaultFluidList(forgeData);
         return forgeData;
     }
 
@@ -205,7 +164,6 @@ public class ForgeMod implements WorldPersistenceHooks.WorldPersistenceHook
     {
         if (tag.contains("dims", 10))
             DimensionManager.readRegistry(tag.getCompound("dims"));
-        // TODO fluids FluidRegistry.loadFluidDefaults(tag);
     }
 
     public void mappingChanged(FMLModIdMappingEvent evt)
@@ -228,5 +186,25 @@ public class ForgeMod implements WorldPersistenceHooks.WorldPersistenceHook
             gen.addProvider(new ForgeItemTagsProvider(gen));
             gen.addProvider(new ForgeRecipeProvider(gen));
         }
+    }
+
+    @SubscribeEvent //ModBus, can't use addListener due to nested genetics.
+    public void registerRecipeSerialziers(RegistryEvent.Register<IRecipeSerializer<?>> event)
+    {
+        CraftingHelper.register(AndCondition.Serializer.INSTANCE);
+        CraftingHelper.register(FalseCondition.Serializer.INSTANCE);
+        CraftingHelper.register(ItemExistsCondition.Serializer.INSTANCE);
+        CraftingHelper.register(ModLoadedCondition.Serializer.INSTANCE);
+        CraftingHelper.register(NotCondition.Serializer.INSTANCE);
+        CraftingHelper.register(OrCondition.Serializer.INSTANCE);
+        CraftingHelper.register(TrueCondition.Serializer.INSTANCE);
+        CraftingHelper.register(TagEmptyCondition.Serializer.INSTANCE);
+
+        CraftingHelper.register(new ResourceLocation("forge", "compound"), CompoundIngredient.Serializer.INSTANCE);
+        CraftingHelper.register(new ResourceLocation("forge", "nbt"), IngredientNBT.Serializer.INSTANCE);
+        CraftingHelper.register(new ResourceLocation("minecraft", "item"), VanillaIngredientSerializer.INSTANCE);
+
+        event.getRegistry().register(new ConditionalRecipe.Serializer<IRecipe<?>>().setRegistryName(new ResourceLocation("forge", "conditional")));
+
     }
 }

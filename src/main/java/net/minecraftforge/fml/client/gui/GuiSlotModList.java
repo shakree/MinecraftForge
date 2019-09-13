@@ -29,12 +29,11 @@ import net.minecraftforge.fml.MavenVersionStringHelper;
 import net.minecraftforge.fml.VersionChecker;
 import net.minecraftforge.fml.loading.moddiscovery.ModInfo;
 
-import static net.minecraft.util.StringUtils.stripControlCodes;
-
 import com.mojang.blaze3d.platform.GlStateManager;
 
 public class GuiSlotModList extends ExtendedList<GuiSlotModList.ModEntry>
 {
+    private static String stripControlCodes(String value) { return net.minecraft.util.StringUtils.stripControlCodes(value); }
     private static final ResourceLocation VERSION_CHECK_ICONS = new ResourceLocation(ForgeVersion.MOD_ID, "textures/gui/version_check_icons.png");
     private final int listWidth;
 
@@ -42,7 +41,7 @@ public class GuiSlotModList extends ExtendedList<GuiSlotModList.ModEntry>
 
     public GuiSlotModList(GuiModList parent, int listWidth)
     {
-        super(parent.getMinecraftInstance(), listWidth, parent.height, 32, parent.height - 67 + 4, parent.getFontRenderer().FONT_HEIGHT * 2 + 8);
+        super(parent.getMinecraftInstance(), listWidth, parent.height, 32, parent.height - 91 + 4, parent.getFontRenderer().FONT_HEIGHT * 2 + 8);
         this.parent = parent;
         this.listWidth = listWidth;
         this.refreshList();
